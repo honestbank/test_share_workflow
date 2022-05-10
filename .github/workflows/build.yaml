@@ -9,6 +9,16 @@ on:
   pull_request:
     branches: [ main ]
   workflow_call:
+    inputs:
+      GOPRIVATE:
+        required: true
+        type: string
+      REPO_NAME:
+        require: true
+        type: string
+    secrets:
+      SSH_KEY:
+        required: true
 
 jobs:
   test:
@@ -34,7 +44,7 @@ jobs:
 
       - name: Configure ssh-key for private modules
         env:
-          SSH_KEY: ${{ secrets.ENGINEERING_SSH_KEY }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
         run: mkdir -p ~/.ssh; echo "$SSH_KEY" > ~/.ssh/id_rsa; chmod 600 ~/.ssh/id_rsa; git config --global url."git@github.com:".insteadOf "https://github.com/"
 
       - name: generate
@@ -43,7 +53,7 @@ jobs:
       - name: Run migrations
         env:
           SKIP_DB: ${{ secrets.SKIP_DB }}
-        if: ${{ env.SKIP_DB != 'TRUE' }}
+        if: ${{ inputs.SKIP_DB != 'TRUE' }}
         run: go run cmd/cli/main.go db migrate
 
       - name: Test and generate code coverage
@@ -114,8 +124,8 @@ jobs:
 
       - name: Build docker image
         run: |
-          docker build --build-arg VERSION=${{ github.sha }} -t ${{ env.REPO_NAME }} .
-          docker tag ${{ env.REPO_NAME }} asia.gcr.io/${{ secrets.GCP_TEST_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ env.REPO_NAME }}:${{ github.sha }}
+          docker build --build-arg VERSION=${{ github.sha }} -t ${{ inputs.REPO_NAME }} .
+          docker tag ${{ inputs.REPO_NAME }} asia.gcr.io/${{ secrets.GCP_TEST_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ inputs.REPO_NAME }}:${{ github.sha }}
 
       - name: Setup gcloud (test)
         uses: google-github-actions/setup-gcloud@v0
@@ -128,13 +138,13 @@ jobs:
 
       - name: Archive docker image
         run: |
-          docker save ${{ env.REPO_NAME }} >> ${{ env.REPO_NAME }}${{ github.sha }}.tar
+          docker save ${{ inputs.REPO_NAME }} >> ${{ inputs.REPO_NAME }}${{ github.sha }}.tar
 
       - name: Upload image as artifact
         uses: actions/upload-artifact@v2
         with:
-          name: ${{ env.REPO_NAME }}
-          path: ${{ env.REPO_NAME }}${{ github.sha }}.tar
+          name: ${{ inputs.REPO_NAME }}
+          path: ${{ inputs.REPO_NAME }}${{ github.sha }}.tar
           retention-days: 1
 
   trivy-scan:
@@ -147,12 +157,12 @@ jobs:
 
       - name: Load Docker images from previous workflows
         run: |
-          docker load --input ${{ env.REPO_NAME }}/${{ env.REPO_NAME }}${{ github.sha }}.tar
+          docker load --input ${{ inputs.REPO_NAME }}/${{ inputs.REPO_NAME }}${{ github.sha }}.tar
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ env.REPO_NAME }}'
+          image-ref: '${{ inputs.REPO_NAME }}'
           hide-progress: false
           format: 'table'
           exit-code: '1'
@@ -174,16 +184,16 @@ jobs:
 
       - name: Load Docker images from previous workflows
         run: |
-          docker load --input ${{ env.REPO_NAME }}/${{ env.REPO_NAME }}${{ github.sha }}.tar
-          docker tag ${{ env.REPO_NAME }} asia.gcr.io/${{ secrets.GCP_TEST_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ env.REPO_NAME }}:${{ github.sha }}
+          docker load --input ${{ inputs.REPO_NAME }}/${{ inputs.REPO_NAME }}${{ github.sha }}.tar
+          docker tag ${{ inputs.REPO_NAME }} asia.gcr.io/${{ secrets.GCP_TEST_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ inputs.REPO_NAME }}:${{ github.sha }}
 
       - name: run end-to-end tests
-        run: CONTAINER_REGISTRY_URL=asia.gcr.io/${{ secrets.GCP_TEST_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ env.REPO_NAME }} TAG_VERSION=${{ github.sha }} make e2e
+        run: CONTAINER_REGISTRY_URL=asia.gcr.io/${{ secrets.GCP_TEST_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ inputs.REPO_NAME }} TAG_VERSION=${{ github.sha }} make e2e
 
       - name: get-docker-log
         if: ${{ failure() }}
         run: |
-          CONTAINER_REGISTRY_URL=asia.gcr.io/${{ secrets.GCP_TEST_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ env.REPO_NAME }} TAG=${{ github.sha }} make docker-log
+          CONTAINER_REGISTRY_URL=asia.gcr.io/${{ secrets.GCP_TEST_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ inputs.REPO_NAME }} TAG=${{ github.sha }} make docker-log
 
   release_job:
     name: semantic-release
@@ -269,8 +279,8 @@ jobs:
         uses: cycjimmy/semantic-release-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.ENGINEERING_GITHUB_PERSONAL_ACCESS_TOKEN }}
-          DOCKER_REPO_TEST: ${{ secrets.GCP_TEST_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ env.REPO_NAME }}
-          DOCKER_REPO_PROD: ${{ secrets.GCP_PROD_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ env.REPO_NAME }}
+          DOCKER_REPO_TEST: ${{ secrets.GCP_TEST_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ inputs.REPO_NAME }}
+          DOCKER_REPO_PROD: ${{ secrets.GCP_PROD_CONTAINER_REGISTRY_PROJECT_NAME }}/${{ inputs.REPO_NAME }}
         with:
           semantic_version: 18
           extra_plugins: |
