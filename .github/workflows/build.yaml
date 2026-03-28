@@ -143,7 +143,7 @@ jobs:
     needs: [ dockerize ]
     steps:
       - name: Download artifacts (Docker images) from previous workflows
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4.1.7
 
       - name: Load Docker images from previous workflows
         run: |
@@ -170,7 +170,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download artifacts (Docker images) from previous workflows
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4.1.7
 
       - name: Load Docker images from previous workflows
         run: |
